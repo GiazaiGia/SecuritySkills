@@ -118,7 +118,30 @@ Configure or optimize scan policies to balance detection coverage, accuracy, and
 | **Dangerous/intrusive checks** | Disable DoS and exploit-verification plugins for production; enable for pre-production/test | Prevents scanner from causing production outages |
 | **Web application checks** | Enable only when scanning web applications with appropriate scope limits | Web app plugins are slow and generate noise against non-web targets |
 
-##### 2b. Scan Intensity and Performance
+##### 2b. Scanner Content Provenance and Safety
+
+Before trusting or tuning a finding, record where the scanner content came from and whether the check has safety-sensitive behavior. Vendor plugins, signed community templates, locally modified checks, OAST/callback checks, and templates that execute local helper code have different confidence and operational risk profiles.
+
+| Field | What to Record | Why It Matters |
+|---|---|---|
+| **Source and trust tier** | Vendor feed, signed community template, reviewed internal template, or unreviewed third-party template | Separates curated checks from low-confidence or experimental content |
+| **Version/hash/signature** | Plugin version, template hash, signature status where supported, and last update date | Supports reproducibility and revalidation after rule-feed changes |
+| **Local modifications** | Owner, review evidence, and test fixtures for modified checks | Prevents local rule drift from being treated as vendor-backed confidence |
+| **Execution class** | Passive, active, intrusive, destructive, local-execution, or OAST/callback | Drives approval, environment, and sandbox requirements |
+| **OAST/callback evidence** | Callback provider, token uniqueness, payload minimization, retention period, and timestamp correlation | Reduces data leakage risk and avoids stale or misattributed callbacks |
+| **Runner sandbox** | Network egress, secret access, cloud metadata access, and filesystem isolation | Required when scanner content can execute local code or helper commands |
+
+**Safety gates:**
+
+- [ ] Unsigned or third-party templates are not treated as equivalent to trusted vendor checks without review evidence.
+- [ ] Local-execution templates run only in a sandboxed runner without production secrets or broad network egress.
+- [ ] OAST callbacks use per-scan unique tokens, minimal payloads, owned/approved callback providers, and documented retention.
+- [ ] Destructive, DoS, exploit-verification, and intrusive checks are disabled in production unless an approved test window and rollback owner are documented.
+- [ ] Suppressions and severity overrides are revalidated after plugin-feed, template, or local-rule updates.
+
+**Finding classification:** Untrusted or locally modified scanner content with no provenance record is **Medium**, or **High** when it drives high-severity findings. Local-execution templates without runner sandbox evidence are **High**. OAST/callback checks without provider, token, retention, and attribution evidence are **Medium** or **High** depending on exposed data.
+
+##### 2c. Scan Intensity and Performance
 
 | Setting | Recommended Value | Notes |
 |---|---|---|
@@ -129,7 +152,7 @@ Configure or optimize scan policies to balance detection coverage, accuracy, and
 | **CGI scanning** | Enable only for confirmed web servers | Scanning non-web hosts with CGI checks wastes time |
 | **Thorough/paranoid mode** | Enable for high-value targets; disable for routine scans | Significantly increases scan duration |
 
-##### 2c. Exclusions and Scope Management
+##### 2d. Exclusions and Scope Management
 
 | Exclusion Type | When to Use | Documentation Required |
 |---|---|---|
@@ -318,9 +341,16 @@ Highlight the most impactful tuning recommendations.]
 |---|---|---|---|
 | Authentication | [Unauthenticated / Partial / Full] | [Full credentialed] | [High/Medium/Low] |
 | Plugin Selection | [All / Custom / Compliance-mixed] | [Separated vuln and compliance policies] | [Priority] |
+| Scanner Content Provenance | [Vendor / Signed / Internal / Third-party / Unknown] | [Recorded trust tier and safety class] | [Priority] |
 | Dangerous Checks | [Enabled / Disabled] | [Disabled for production] | [Priority] |
 | Scan Frequency | [Current schedule] | [Recommended schedule] | [Priority] |
 | Port Range | [Current range] | [Recommended range] | [Priority] |
+
+### Scanner Content Provenance
+
+| Content Source | Version/Hash | Signature/Review Status | Execution Class | Safety Gate | Revalidation Trigger |
+|---|---|---|---|---|---|
+| [vendor/plugin/template source] | [version/hash/date] | [signed/reviewed/unknown] | [passive/active/intrusive/OAST/local-execution] | [sandbox/OAST approval/disabled in prod] | [feed update/local edit/suppression change] |
 
 ### False Positive Analysis
 
@@ -399,6 +429,8 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 
 5. **Not correlating results across scanners.** Organizations running multiple scanners often treat each scanner's output independently, leading to duplicate remediation efforts for the same vulnerability and missed findings that only one scanner detects. Establish a correlation process using CVE ID as the primary key and CWE as a fallback for non-CVE findings.
 
+6. **Trusting scanner content without provenance.** Community templates, locally modified rules, and OAST checks can generate high-severity findings from weak matchers, stale callbacks, or unsafe runner behavior. Record source, version/hash, signature or review status, safety class, and revalidation triggers before tuning severity or suppressions.
+
 ---
 
 ## Prompt Injection Safety Notice
@@ -428,4 +460,6 @@ Common Weakness Enumeration. A community-developed list of software and hardware
 - Trivy: https://aquasecurity.github.io/trivy/
 - Grype: https://github.com/anchore/grype
 - Nuclei: https://docs.projectdiscovery.io/tools/nuclei/
+- Nuclei template signing: https://docs.projectdiscovery.io/templates/reference/template-signing
+- Nuclei code protocol: https://docs.projectdiscovery.io/templates/protocols/code
 - NVD (NIST): https://nvd.nist.gov/
