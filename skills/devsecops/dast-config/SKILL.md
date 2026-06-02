@@ -331,6 +331,24 @@ env:
 
 ---
 
+#### 4.2 Authorization Coverage Matrix
+
+Authenticated scanning proves that at least one session can crawl the application. It does not, by itself, prove Broken Access Control coverage. For applications with multiple roles, tenants, resource owners, or high-risk object identifiers, require an authorization coverage matrix before reporting A01 coverage as complete.
+
+Record role inventory, tenant/account boundaries, object pairs, expected allow/deny cases, excluded high-risk endpoints, and compensating validation such as a ZAP access-control test, API negative test, seeded staging data, manual test ticket, or Not Evaluable reason.
+
+**What to verify:**
+
+- [ ] Multi-role or multi-tenant applications include paired users, roles, tenants, or a documented Not Evaluable reason.
+- [ ] Object-level authorization tests include paired resource IDs owned by different users or tenants.
+- [ ] Admin-only scans are not counted as realistic user coverage for A01.
+- [ ] Destructive endpoints excluded from active scanning have compensating validation evidence.
+- [ ] Reports separate "authenticated scan exists" from "authorization coverage evidenced."
+
+**Finding classification:** Single-user authenticated scanning for a multi-role or multi-tenant application is **High** when reported as complete A01 coverage. Missing object-pair evidence for IDOR testing is **High**. Excluded high-risk endpoints without compensating validation are **Medium** or **High** depending on business impact.
+
+---
+
 ### Step 5: CI/CD DAST Integration
 
 #### 5.1 Pipeline Integration Patterns
@@ -482,8 +500,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No authenticated scanning; active scanning targeting production; injection scan rules disabled; no scope restrictions. |
-| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent. |
-| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules. |
+| **High** | No DAST in CI/CD; no API scanning for API endpoints; active scanning disabled entirely; hardcoded credentials in config; destructive endpoints not excluded; authentication verification absent; single-user scan reported as complete A01 coverage for multi-role or multi-tenant app. |
+| **Medium** | No passive scanning on PRs; no scheduled full scan; OpenAPI spec out of date; no triage workflow; no deduplication; ZAP action unpinned; missing GraphQL scanning; missing security header rules; excluded high-risk endpoints lack compensating validation. |
 | **Low** | Suboptimal scan duration settings; cosmetic report formatting; non-critical passive rules disabled. |
 
 ---
@@ -514,11 +532,20 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 | Setting | Status | Evidence |
 |---------|--------|---------|
 | Authenticated scanning | Yes/No | <auth method> |
+| Authorization coverage matrix | Yes/No/Not Evaluable | <roles, tenants, object pairs, deny cases> |
 | Scope restrictions | Yes/No | <include/exclude paths> |
 | Passive scanning in CI | Yes/No | <workflow file> |
 | Active scanning (staging) | Yes/No | <workflow file> |
 | API scanning | Yes/No | <OpenAPI/GraphQL import> |
 | Results deduplication | Yes/No | <dedup method> |
+
+### Authorization Coverage
+
+| Boundary | Users/Roles Tested | Object/Tenant Pair | Expected Deny Case | Evidence | Gap |
+|----------|--------------------|--------------------|--------------------|----------|-----|
+| Horizontal object access | user-a, user-b | invoice-1001 / invoice-2002 | user-a cannot read user-b invoice | <ZAP/manual/API evidence> | None |
+| Vertical role access | viewer, admin | /admin/users | viewer cannot POST admin action | <evidence> | None |
+| Excluded destructive action | reviewer, approver | /payments/refund | active scan excluded; manual test required | <ticket/test> | Compensating validation |
 
 ### Findings
 
@@ -583,6 +610,8 @@ DAST tools report findings per-URL, producing hundreds of duplicate alerts for t
 4. **Treating DAST findings as ground truth without validation.** DAST tools have significant false positive rates, especially for injection findings. Every high-severity DAST finding must be manually validated before filing a remediation ticket. Build validation into the triage workflow.
 
 5. **Running only scheduled weekly scans instead of integrating into CI.** Weekly scans create a feedback loop measured in days. Passive baseline scans in CI (on every PR) give developers immediate feedback on security header regressions and configuration issues, while weekly full scans provide comprehensive active testing coverage.
+
+6. **Counting one authenticated user as complete access-control coverage.** A single successful login proves crawl access, not horizontal or vertical authorization testing. Multi-role, multi-tenant, and object-owner boundaries need paired users/resources and expected deny cases, or the report should mark A01 coverage as partial.
 
 ---
 
