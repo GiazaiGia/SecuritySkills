@@ -260,8 +260,30 @@ query-filters:
 - Custom query directory exists for org-specific patterns.
 - `paths-ignore` does not exclude production source code.
 - `query-filters` exclusions have documented justification.
+- The configured CodeQL language matrix matches the repository language inventory.
+- Compiled-language extraction has build-mode evidence, not only a green workflow status.
+- Generated sources and ignored paths are justified when they contain security-sensitive code.
 
-#### 4.2 CodeQL Custom Query Structure
+#### 4.2 CodeQL Build Coverage Evidence
+
+For compiled languages, a successful CodeQL job does not prove that the correct build graph was captured. Java, C/C++, C#, Go, Swift, Kotlin, and monorepos often need explicit build evidence before SAST coverage can be treated as complete.
+
+Record the language inventory, scanner language matrix, extraction mode, build command, analyzed modules, generated-source handling, dependency restoration status, and ignored paths before marking coverage as complete.
+
+**Build coverage checklist:**
+
+- [ ] Repository language inventory is compared with configured SAST languages.
+- [ ] Each production language has an enabled scanner or a documented Not Evaluable reason.
+- [ ] Compiled languages record extraction mode: autobuild, manual build, none/no-build, or dependency-cached extraction.
+- [ ] Manual build commands match production modules, build flags, generated sources, and dependency restore steps.
+- [ ] Monorepos list each deployable component analyzed by CodeQL, Semgrep, SonarQube, or equivalent tooling.
+- [ ] Generated controllers, GraphQL resolvers, protobuf handlers, ORM models, and API stubs are either scanned or covered by source-template evidence.
+- [ ] `paths-ignore` and tool-specific exclusions do not hide production security boundaries without justification.
+- [ ] Build logs or CodeQL database creation output show successful extraction for the intended modules.
+
+**Finding classification:** Omitted production languages are **High** when code is production-reachable. CodeQL autobuild with no evidence of the captured build graph is **Medium**, or **High** when compiled production modules are likely missing. Excluding generated security-sensitive code without compensating evidence is **High**.
+
+#### 4.3 CodeQL Custom Query Structure
 
 ```ql
 /**
@@ -440,8 +462,8 @@ jobs:
 | Severity | Definition |
 |----------|-----------|
 | **Critical** | No SAST tooling deployed; CWE Top 5 weaknesses with zero rule coverage for languages in active use. |
-| **High** | SAST not a required CI check; CWE Top 10 coverage gap; suppressions without justification; no triage workflow; custom rules with incorrect severity mapping. |
-| **Medium** | CWE 11-25 coverage gap; no false positive management process; no scheduled full-repo scan; no remediation SLA; excessive path exclusions; FP rate > 30%. |
+| **High** | SAST not a required CI check; CWE Top 10 coverage gap; omitted production language; suppressions without justification; no triage workflow; custom rules with incorrect severity mapping; generated security-sensitive code excluded without compensating evidence. |
+| **Medium** | CWE 11-25 coverage gap; no false positive management process; no scheduled full-repo scan; no remediation SLA; excessive path exclusions; FP rate > 30%; CodeQL autobuild lacks build coverage evidence. |
 | **Low** | Rule naming convention inconsistencies; missing metadata on custom rules; suboptimal scan performance; cosmetic configuration issues. |
 
 ---
@@ -465,6 +487,18 @@ jobs:
 | CWE-79 | XSS | JS, Python | 3 rules | ERROR | None |
 | CWE-89 | SQLi | Python | 2 rules | ERROR | None |
 | CWE-78 | Cmd Injection | Python | 0 rules | N/A | GAP |
+
+### SAST Coverage Evidence
+
+| Area | Evidence Required | Status | Gap |
+|------|-------------------|--------|-----|
+| Language inventory | <repo languages and production reachability> | Yes/No | <missing languages> |
+| Scanner language matrix | <Semgrep/CodeQL/Sonar languages enabled> | Yes/No | <omitted scanner coverage> |
+| Compiled-language build mode | <autobuild/manual/no-build/dependency-cached> | Yes/No/Not Evaluable | <build evidence gap> |
+| Build command and modules | <command, flags, modules, generated-source step> | Yes/No | <wrong or partial build> |
+| Dependency restoration | <package restore or cache evidence> | Yes/No | <failed/missing restore> |
+| Generated-source handling | <scanned, template-covered, or justified exclusion> | Yes/No | <security-sensitive generated code gap> |
+| Path exclusions | <paths-ignore and tool exclusions reviewed> | Yes/No | <production paths hidden> |
 
 ### CI Integration Status
 
@@ -534,7 +568,9 @@ jobs:
 
 4. **Not testing custom rules against both vulnerable and safe code.** A custom rule that fires on vulnerable patterns but also fires on safe patterns is worse than no rule (it trains developers to suppress). Maintain a test corpus with expected true positives and expected true negatives for every custom rule.
 
-5. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
+5. **Trusting CodeQL autobuild without build evidence.** Autobuild can succeed while compiling the wrong module, skipping generated sources, or missing dependency restoration. Treat the workflow status as execution evidence, then verify the captured build graph before claiming compiled-language coverage.
+
+6. **Ignoring SAST scan performance.** If SAST takes 30 minutes on a PR check, developers will find ways to bypass it. Target under 10 minutes for PR scans. Use diff-aware scanning for PRs and reserve full analysis for scheduled scans.
 
 ---
 
@@ -558,6 +594,8 @@ This skill processes SAST configuration files, custom rules, and code patterns t
 - Semgrep Registry: https://semgrep.dev/r
 - CodeQL Documentation: https://codeql.github.com/docs/
 - CodeQL for GitHub: https://docs.github.com/en/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning-with-codeql
+- CodeQL database creation: https://codeql.github.com/docs/codeql-cli/creating-codeql-databases/
+- CodeQL supported languages and frameworks: https://codeql.github.com/docs/codeql-overview/supported-languages-and-frameworks/
 - SonarQube Documentation: https://docs.sonarsource.com/sonarqube/
 
 ---
