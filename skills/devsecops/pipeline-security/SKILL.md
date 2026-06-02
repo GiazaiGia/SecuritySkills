@@ -12,7 +12,7 @@ phase: [build, deploy]
 frameworks: [SLSA-v1.0, OWASP-CICD-Top-10]
 difficulty: intermediate
 time_estimate: "30-60min"
-version: "1.0.0"
+version: "1.0.1"
 author: unitoneai
 license: MIT
 allowed-tools: Read, Grep, Glob
@@ -251,6 +251,7 @@ on: pull_request_target
 ```
 
 - **Indirect PPE:** Workflows that execute scripts, Makefiles, or config files that exist in the repository and can be modified by a pull request.
+- **Privileged `workflow_run` artifact handoff:** A low-privilege pull request workflow uploads an artifact, then a high-privilege `workflow_run` workflow downloads that artifact and executes it, deploys it, or uses it as a trusted configuration input. This can reintroduce poisoned pipeline execution even when `pull_request_target` is avoided.
 - **Public fork access:** Whether the repository allows workflows to run on pull requests from forks with access to secrets.
 - Injection of untrusted input into shell commands:
 
@@ -264,7 +265,37 @@ on: pull_request_target
     PR_TITLE: ${{ github.event.pull_request.title }}
 ```
 
-**Finding format:** Report any `pull_request_target` usage, direct expression injection in `run:` steps, fork workflow policies, and whether PR code can influence privileged pipelines.
+**GitHub Actions `workflow_run` artifact handoff patterns:**
+
+```yaml
+# DANGEROUS: privileged follow-up workflow trusts artifacts from an untrusted PR run
+on:
+  workflow_run:
+    workflows: ["pull-request-build"]
+    types: [completed]
+
+permissions: write-all
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+      - run: ./artifact/deploy.sh
+```
+
+For any `workflow_run` pipeline, verify:
+
+- [ ] The upstream workflow trigger and trust level are documented (`pull_request`, `push`, scheduled, or trusted release branch).
+- [ ] The follow-up workflow checks `github.event.workflow_run.conclusion == 'success'` before any privileged action.
+- [ ] The follow-up workflow verifies `head_repository.full_name`, `head_branch`, or `head_sha` against an expected trusted source before using artifacts for deployment or release.
+- [ ] Downloaded artifacts are treated as untrusted data unless rebuilt from a trusted ref or verified with a manifest, checksum, signature, or attestation produced by a trusted build.
+- [ ] Downloaded artifacts are not executed directly as scripts, package hooks, Makefiles, Terraform plans, deployment manifests, or release inputs without validation.
+- [ ] The follow-up workflow uses the minimum required `permissions` block and does not grant `write-all` or secret access unless the artifact source is trusted.
+
+**Finding format:** Report any `pull_request_target` usage, direct expression injection in `run:` steps, `workflow_run` artifact handoffs, fork workflow policies, and whether PR code or PR-produced artifacts can influence privileged pipelines.
 
 ---
 
@@ -388,6 +419,7 @@ docker.sock
 **What to look for:**
 
 - Artifacts built and deployed without signing or attestation.
+- Artifacts downloaded from an earlier workflow run and trusted without verifying the producing workflow, source ref, checksum, signature, or attestation.
 - Container images pushed without digest pinning or signing (cosign, Notary).
 - No SBOM (Software Bill of Materials) generation in the build pipeline.
 - Downloaded dependencies or tools without checksum verification.
@@ -403,6 +435,12 @@ actions/attest-build-provenance
 sigstore
 in-toto
 
+# Look for artifact handoffs between workflows
+workflow_run
+actions/download-artifact
+github.event.workflow_run
+run-id:
+
 # Look for SBOM generation
 syft
 cyclonedx
@@ -414,7 +452,7 @@ image: nginx@sha256:abcdef...  # GOOD
 image: nginx:latest            # BAD
 ```
 
-**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, and whether container images use digest pinning.
+**Finding format:** Report whether artifacts are signed, whether provenance is generated, whether SBOMs are produced, whether container images use digest pinning, and whether cross-workflow artifact handoffs verify artifact origin and integrity before privileged use.
 
 ---
 
@@ -558,3 +596,4 @@ This skill processes user-supplied content including CI/CD configuration files, 
 ## Changelog
 
 - **1.0.0** -- Initial release. Full coverage of SLSA v1.0 build track and OWASP Top 10 CI/CD Security Risks (CICD-SEC-1 through CICD-SEC-10).
+- **1.0.1** -- Add `workflow_run` artifact handoff review guidance for privileged follow-up workflows that consume artifacts produced by untrusted pull request workflows.
